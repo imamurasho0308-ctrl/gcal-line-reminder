@@ -1,0 +1,59 @@
+name: Calendar LINE Reminder
+
+on:
+  schedule:
+    # 15 分ごと。GitHub の cron は数分〜十数分遅延・まれにスキップされるが、
+    # state/notified.json による重複防止があるため取りこぼしても後続の実行で通知される。
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "LINE 送信せず内容だけ確認する"
+        type: boolean
+        default: false
+
+concurrency:
+  group: calendar-line-reminder
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Run reminder
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_TO: ${{ secrets.LINE_TO }}
+          # ↓ 必要に応じて変更
+          CALENDAR_IDS: "primary"
+          REMIND_BEFORE_MINUTES: "30"
+          WINDOW_MINUTES: "60"
+          TIMEZONE: "Asia/Tokyo"
+          SKIP_ALL_DAY: "true"
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: python src/reminder.py
+
+      - name: Persist notification state
+        if: ${{ github.event_name == 'schedule' || inputs.dry_run != true }}
+        run: |
+          if [[ -n "$(git status --porcelain state/notified.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state/notified.json
+            git commit -m "chore: update reminder state [skip ci]"
+            git push
+          fi
