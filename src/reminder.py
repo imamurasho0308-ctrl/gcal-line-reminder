@@ -169,6 +169,10 @@ def main() -> int:
     calendar_ids = [c.strip() for c in env("CALENDAR_IDS", "primary").split(",") if c.strip()]
     leads = sorted({int(x) for x in env("REMIND_BEFORE_MINUTES", "30").replace(" ", "").split(",") if x})
     window = int(env("WINDOW_MINUTES", "60"))
+    # cron の遅延・欠落対策。予定がリード時間 +CATCHUP 分以内に入っていれば
+    # （多少早くても）通知する。開始後 LATE_GRACE 分までは取りこぼしとして拾う。
+    catchup = int(env("CATCHUP_MINUTES", "20"))
+    late_grace = int(env("LATE_GRACE_MINUTES", "10"))
     skip_all_day = env("SKIP_ALL_DAY", "true").lower() == "true"
     dry_run = env("DRY_RUN", "false").lower() == "true"
     line_token = env("LINE_CHANNEL_ACCESS_TOKEN", required=not dry_run)
@@ -202,10 +206,10 @@ def main() -> int:
                 continue
 
             minutes_until = (start_utc - now).total_seconds() / 60
-            if minutes_until < -1:  # すでに始まった予定は対象外
+            if minutes_until < -late_grace:  # だいぶ前に始まった予定は対象外
                 continue
 
-            applicable = [lead for lead in leads if minutes_until <= lead]
+            applicable = [lead for lead in leads if minutes_until <= lead + catchup]
             if not applicable:
                 continue
 
