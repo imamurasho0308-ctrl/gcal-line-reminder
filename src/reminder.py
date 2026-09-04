@@ -4,15 +4,21 @@
 GitHub Actions から cron 実行される想定。通知済みの予定は state/notified.json に
 記録し、二重通知を防ぐ。状態ファイルはワークフローがリポジトリへコミットして永続化する。
 
+Google 認証は次のどちらか:
+  (推奨) GOOGLE_SERVICE_ACCOUNT_JSON  サービスアカウントの鍵 JSON をそのまま入れる。
+         対象カレンダーをこのサービスアカウントのメールアドレスに共有しておく。
+         同意画面・公開設定・トークン失効がなく、放置で動き続ける。
+  (旧)   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN
+         OAuth。同意画面が「テスト」だとリフレッシュトークンが 7 日で失効する。
+
 必要な環境変数:
-  GOOGLE_CLIENT_ID           OAuth クライアント ID
-  GOOGLE_CLIENT_SECRET       OAuth クライアントシークレット
-  GOOGLE_REFRESH_TOKEN       scripts/get_refresh_token.py で取得したリフレッシュトークン
   LINE_CHANNEL_ACCESS_TOKEN  LINE Messaging API のチャネルアクセストークン（長期）
   LINE_TO                    送信先の userId（自分の userId でも可）
 
 任意の環境変数:
   CALENDAR_IDS           対象カレンダー ID をカンマ区切りで（既定: primary）
+                         ※サービスアカウント利用時は 'primary' 不可。
+                           共有したカレンダーの ID（通常は自分のメールアドレス）を指定する。
   REMIND_BEFORE_MINUTES  何分前に通知するか。カンマ区切りで複数可（既定: 30）
   WINDOW_MINUTES         先読みする追加の猶予分（既定: 60）
   TIMEZONE              メッセージ表示用の IANA タイムゾーン（既定: Asia/Tokyo）
@@ -35,6 +41,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATE_PATH = ROOT / "state" / "notified.json"
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 CALENDAR_API = "https://www.googleapis.com/calendar/v3/calendars/{cal}/events"
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
@@ -49,6 +56,32 @@ def env(name: str, default: str | None = None, required: bool = False) -> str:
 
 
 def get_access_token() -> str:
+    """サービスアカウント JSON があればそれを使い、無ければ OAuth リフレッシュトークン。"""
+    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    if sa_json:
+        return _service_account_token(sa_json)
+    return _oauth_refresh_token()
+
+
+def _service_account_token(sa_json: str) -> str:
+    try:
+        import google.auth.transport.requests as greq
+        from google.oauth2 import service_account
+    except ImportError:
+        sys.exit("google-auth が未インストールです。requirements.txt を反映してください")
+    try:
+        info = json.loads(sa_json)
+    except json.JSONDecodeError as exc:
+        sys.exit(f"GOOGLE_SERVICE_ACCOUNT_JSON が JSON として不正です: {exc}")
+    creds = service_account.Credentials.from_service_account_info(info, scopes=[GOOGLE_SCOPE])
+    try:
+        creds.refresh(greq.Request())
+    except Exception as exc:  # noqa: BLE001
+        sys.exit(f"サービスアカウントの認証に失敗しました: {exc}")
+    return creds.token
+
+
+def _oauth_refresh_token() -> str:
     resp = requests.post(
         GOOGLE_TOKEN_URL,
         data={

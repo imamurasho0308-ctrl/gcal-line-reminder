@@ -33,12 +33,17 @@ jobs:
 
       - name: Run reminder
         env:
+          # 推奨: サービスアカウント（同意画面・公開設定・トークン失効なし）
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          # 旧方式: OAuth リフレッシュトークン（サービスアカウント未設定時のみ使われる）
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_TO: ${{ secrets.LINE_TO }}
-          # ↓ 必要に応じて変更
+          # ↓ 必要に応じて変更。
+          #   サービスアカウント利用時は "primary" 不可 → 共有したカレンダー ID
+          #   （通常は自分の Gmail アドレス）に変更すること。
           CALENDAR_IDS: "imamurasho0308@gmail.com"
           REMIND_BEFORE_MINUTES: "30"
           WINDOW_MINUTES: "60"
