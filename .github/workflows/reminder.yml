@@ -39,7 +39,7 @@ jobs:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_TO: ${{ secrets.LINE_TO }}
           # ↓ 必要に応じて変更
-          CALENDAR_IDS: "primary"
+          CALENDAR_IDS: "imamurasho0308@gmail.com"
           REMIND_BEFORE_MINUTES: "30"
           WINDOW_MINUTES: "60"
           TIMEZONE: "Asia/Tokyo"
